@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hứng Chữ Cái i - c - t (Vườn hoa)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #e0f2fe; font-family: 'Inter', sans-serif; }
+        canvas { display: block; cursor: none; }
+        .ui-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        #gameCanvas { touch-action: none; }
+        .gradient-text { background: linear-gradient(to right, #ef4444, #ec4899, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    </style>
+</head>
+<body>
+    <div id="game-ui" class="ui-overlay flex flex-col items-center justify-between p-6">
+        <div class="bg-white/90 backdrop-blur-xl p-3 rounded-2xl shadow-xl border border-white/50 text-center pointer-events-auto max-w-xs w-full">
+            <h1 class="text-xl font-black gradient-text mb-1">
+                Hứng Chữ Cái i - c - t
+            </h1>
+            <p class="text-gray-700 font-medium text-xs">
+                Hứng chữ <span class="text-red-500 font-bold">i</span>, <span class="text-pink-500 font-bold">c</span> và <span class="text-purple-600 font-bold">t</span>!
+            </p>
+            <div id="score" class="text-xl font-bold mt-1 text-orange-600 animate-pulse">Điểm: 0</div>
+            <button id="start-btn" class="mt-1 bg-orange-500 hover:bg-orange-600 text-white font-bold py-1 px-6 rounded-full shadow-lg transform transition-all active:scale-95 text-sm">
+                Bắt đầu chơi
+            </button>
+        </div>
+        
+        <div id="message-box" class="bg-orange-400 text-white font-bold py-2 px-6 text-sm rounded-full shadow-lg pointer-events-auto transform transition-all">
+            Sẵn sàng chưa? Hãy hứng mưa chữ cái nào!
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const messageBox = document.getElementById('message-box');
+        const startBtn = document.getElementById('start-btn');
+
+        let score = 0;
+        let gameActive = false;
+        const drops = [];
+        const particles = [];
+        const flowers = [];
+        const player = { x: 0, y: 0 }; 
+
+        const letters = [
+            { char: "i", color: "#ef4444" }, 
+            { char: "c", color: "#ec4899" }, 
+            { char: "t", color: "#8b5cf6" } 
+        ];
+        
+        let synth;
+
+        function initAudio() {
+            synth = new Tone.Synth({
+                oscillator: { type: 'triangle' },
+                envelope: { attack: 0.01, decay: 0.2, sustain: 0.1, release: 0.5 }
+            }).toDestination();
+        }
+
+        function playCatchSound(index) {
+            if (synth) {
+                const notes = ["C5", "E5", "G5"];
+                synth.triggerAttackRelease(notes[index % 3], "8n");
+            }
+        }
+
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 8; i++) {
+                particles.push({
+                    x, y,
+                    vx: (Math.random() - 0.5) * 8,
+                    vy: (Math.random() - 0.5) * 8,
+                    life: 1.0,
+                    color
+                });
+            }
+        }
+
+        function generateFlowers() {
+            flowers.length = 0;
+            const count = Math.floor(canvas.width / 60);
+            for (let i = 0; i < count; i++) {
+                flowers.push({
+                    x: i * 60 + 30 + (Math.random() * 20 - 10),
+                    color: ['#f87171', '#fb923c', '#facc15', '#4ade80', '#22d3ee', '#c084fc'][Math.floor(Math.random() * 6)]
+                });
+            }
+        }
+
+        function drawFlowers() {
+            flowers.forEach(f => {
+                // Stem
+                ctx.strokeStyle = '#15803d';
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.moveTo(f.x, canvas.height);
+                ctx.lineTo(f.x, canvas.height - 40);
+                ctx.stroke();
+
+                // Petals
+                ctx.fillStyle = f.color;
+                for (let i = 0; i < 6; i++) {
+                    const angle = i * Math.PI / 3;
+                    ctx.beginPath();
+                    ctx.arc(f.x + Math.cos(angle) * 12, canvas.height - 50 + Math.sin(angle) * 12, 8, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                // Center
+                ctx.fillStyle = '#fef08a';
+                ctx.beginPath();
+                ctx.arc(f.x, canvas.height - 50, 6, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            player.y = canvas.height - 120;
+            generateFlowers();
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        canvas.addEventListener('mousemove', (e) => { player.x = e.clientX; });
+        canvas.addEventListener('touchmove', (e) => { player.x = e.touches[0].clientX; });
+
+        startBtn.addEventListener('click', async () => {
+            await Tone.start();
+            initAudio();
+            gameActive = true;
+            startBtn.classList.add('hidden');
+            messageBox.innerText = "Cố lên, thật nhiều chữ cái!";
+            spawnDrop();
+            animate();
+        });
+
+        function spawnDrop() {
+            if (!gameActive) return;
+            const item = letters[Math.floor(Math.random() * letters.length)];
+            drops.push({
+                x: Math.random() * (canvas.width - 80) + 40,
+                y: -60,
+                speed: 4 + Math.random() * 3,
+                ...item
+            });
+            setTimeout(spawnDrop, 700);
+        }
+
+        function animate() {
+            if (!gameActive) return;
+            
+            // Background
+            const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            grad.addColorStop(0, '#fef3c7');
+            grad.addColorStop(1, '#d1fae5');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            drawFlowers();
+
+            // Draw Basket (Orange)
+            ctx.fillStyle = '#f97316';
+            ctx.shadowColor = 'rgba(0,0,0,0.3)';
+            ctx.shadowBlur = 15;
+            ctx.beginPath();
+            ctx.moveTo(player.x - 50, player.y);
+            ctx.quadraticCurveTo(player.x, player.y + 60, player.x + 50, player.y);
+            ctx.lineTo(player.x + 35, player.y + 70);
+            ctx.lineTo(player.x - 35, player.y + 70);
+            ctx.closePath();
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            drops.forEach((drop, index) => {
+                drop.y += drop.speed;
+                
+                // Draw Raindrop (Sky Blue)
+                ctx.fillStyle = '#0ea5e9';
+                ctx.shadowColor = '#0ea5e9';
+                ctx.shadowBlur = 10;
+                ctx.beginPath();
+                ctx.arc(drop.x, drop.y, 30, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                
+                // Draw Letter (Black)
+                ctx.fillStyle = '#000000';
+                ctx.font = 'bold 36px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(drop.char, drop.x, drop.y + 12);
+
+                // Collision
+                const dx = drop.x - player.x;
+                const dy = drop.y - player.y;
+                if (Math.sqrt(dx * dx + dy * dy) < 70) {
+                    score += 10;
+                    scoreEl.innerText = `Điểm: ${score}`;
+                    playCatchSound(letters.findIndex(l => l.char === drop.char));
+                    createParticles(drop.x, drop.y, drop.color);
+                    drops.splice(index, 1);
+                }
+
+                if (drop.y > canvas.height + 60) drops.splice(index, 1);
+            });
+
+            particles.forEach((p, index) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+                if (p.life <= 0) particles.splice(index, 1);
+            });
+
+            requestAnimationFrame(animate);
+        }
+    </script>
+</body>
+</html>
